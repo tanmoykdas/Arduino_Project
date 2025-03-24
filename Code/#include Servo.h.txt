@@ -1,0 +1,200 @@
+#include <Servo.h>
+
+// =========================
+// Pin Definitions
+// =========================
+
+// Motor Driver Pins (L293D Module)
+#define MOTOR_IN1   9      // IN1 -> Arduino Pin 9
+#define MOTOR_IN2   8      // IN2 -> Arduino Pin 8
+#define MOTOR_IN3   7      // IN3 -> Arduino Pin 7
+#define MOTOR_IN4   6      // IN4 -> Arduino Pin 6
+//#define MOTOR_VCC   2      // Removed as 5V is used
+#define MOTOR_GND   GND    // GND -> Common Ground
+
+// Sensor Pins
+#define FLAME_RIGHT A0      // Right Flame Sensor
+#define FLAME_FRONT A1      // Front Flame Sensor
+#define FLAME_LEFT  A2      // Left Flame Sensor
+
+// Servo and Pump Pins
+#define SERVO_PIN  A4       // Servo Control Pin
+#define RELAY_PIN  A5       // Relay Control Pin (Water Pump)
+
+// =========================
+// Constants and Variables
+// =========================
+
+const unsigned long SENSOR_INTERVAL = 50; // Sensor reading interval in milliseconds
+
+int sensorRight = 0, sensorFront = 0, sensorLeft = 0;
+
+Servo myServo;
+
+// Timing Variables for Non-Blocking Delays
+unsigned long previousMillis = 0;
+
+// =========================
+// Setup Function
+// =========================
+void setup() {
+    Serial.begin(9600); // Initialize Serial Communication for Debugging
+
+    // Initialize Sensor Pins
+    pinMode(FLAME_RIGHT, INPUT);
+    pinMode(FLAME_FRONT, INPUT);
+    pinMode(FLAME_LEFT, INPUT);
+
+    // Initialize Motor Control Pins
+    pinMode(MOTOR_IN1, OUTPUT);
+    pinMode(MOTOR_IN2, OUTPUT);
+    pinMode(MOTOR_IN3, OUTPUT);
+    pinMode(MOTOR_IN4, OUTPUT);
+
+    // Initialize Servo and Relay Pins
+    myServo.attach(SERVO_PIN);
+    pinMode(RELAY_PIN, OUTPUT);
+    digitalWrite(RELAY_PIN, LOW); // Ensure Pump is OFF Initially
+
+    // Initialize Servo to Neutral Position
+    myServo.write(90);
+    delay(500); // Allow Servo to Reach Position
+
+    // Optional: Sweep Servo to Initialize Movement
+    sweepServo(90, 140, 5);
+    sweepServo(140, 40, 5);
+    sweepServo(40, 95, 5);
+}
+
+// =========================
+// Main Loop Function
+// =========================
+void loop() {
+    unsigned long currentMillis = millis();
+
+    // Non-blocking sensor reading
+    if (currentMillis - previousMillis >= SENSOR_INTERVAL) {
+        previousMillis = currentMillis;
+
+        // Read Sensor Values
+        sensorRight = analogRead(FLAME_RIGHT);
+        sensorFront = analogRead(FLAME_FRONT);
+        sensorLeft = analogRead(FLAME_LEFT);
+
+        // Debugging: Print Sensor Values
+        Serial.print("Right: ");
+        Serial.print(sensorRight);
+        Serial.print("\tFront: ");
+        Serial.print(sensorFront);
+        Serial.print("\tLeft: ");
+        Serial.println(sensorLeft);
+
+        // Auto Control Logic Based on Sensor Readings
+        if (sensorRight < 250) {
+            handleFireDetection(90, 40, 3);
+        }
+        else if (sensorFront < 350) {
+            handleFireDetection(90, 140, 3);
+        }
+        else if (sensorLeft < 250) {
+            handleFireDetection(90, 140, 3);
+            myServo.write(90); // Reset Servo Position After Handling
+        }
+        else if (sensorRight >= 251 && sensorRight <= 700) {
+            deactivatePump();
+            moveBackward();
+            delay(100);
+            turnRight();
+            delay(200);
+        }
+        else if (sensorFront >= 251 && sensorFront <= 800) {
+            deactivatePump();
+            moveForward();
+        }
+        else if (sensorLeft >= 251 && sensorLeft <= 700) {
+            deactivatePump();
+            moveBackward();
+            delay(100);
+            turnLeft();
+            delay(200);
+        }
+        else {
+            deactivatePump();
+            stopRobot();
+        }
+    }
+
+    // Additional Non-Blocking Code Can Be Placed Here
+}
+
+// =========================
+// Helper Functions
+// =========================
+
+// Function to Handle Fire Detection and Extinguishing
+void handleFireDetection(int startAngle, int endAngle, int step) {
+    stopRobot();
+    activatePump();
+    sweepServo(startAngle, endAngle, step);
+    sweepServo(endAngle, startAngle, step);
+}
+
+// Function to Sweep Servo Smoothly Between Two Angles
+void sweepServo(int startAngle, int endAngle, int step) {
+    if (startAngle < endAngle) {
+        for (int angle = startAngle; angle <= endAngle; angle += step) {
+            myServo.write(angle);
+            delay(15); // Small Delay for Servo to Move
+        }
+    } else {
+        for (int angle = startAngle; angle >= endAngle; angle -= step) {
+            myServo.write(angle);
+            delay(15); // Small Delay for Servo to Move
+        }
+    }
+}
+
+// Motor Control Functions
+void moveForward() {
+    digitalWrite(MOTOR_IN1, HIGH);
+    digitalWrite(MOTOR_IN2, LOW);
+    digitalWrite(MOTOR_IN3, LOW);
+    digitalWrite(MOTOR_IN4, HIGH);
+}
+
+void moveBackward() {
+    digitalWrite(MOTOR_IN1, LOW);
+    digitalWrite(MOTOR_IN2, HIGH);
+    digitalWrite(MOTOR_IN3, HIGH);
+    digitalWrite(MOTOR_IN4, LOW);
+}
+
+void turnRight() {
+    digitalWrite(MOTOR_IN1, LOW);
+    digitalWrite(MOTOR_IN2, HIGH);
+    digitalWrite(MOTOR_IN3, LOW);
+    digitalWrite(MOTOR_IN4, HIGH);
+}
+
+void turnLeft() {
+    digitalWrite(MOTOR_IN1, HIGH);
+    digitalWrite(MOTOR_IN2, LOW);
+    digitalWrite(MOTOR_IN3, HIGH);
+    digitalWrite(MOTOR_IN4, LOW);
+}
+
+void stopRobot() {
+    digitalWrite(MOTOR_IN1, LOW);
+    digitalWrite(MOTOR_IN2, LOW);
+    digitalWrite(MOTOR_IN3, LOW);
+    digitalWrite(MOTOR_IN4, LOW);
+}
+
+// Pump Control Functions Using Relay
+void activatePump() {
+    digitalWrite(RELAY_PIN, HIGH); // Turn ON Pump
+}
+
+void deactivatePump() {
+    digitalWrite(RELAY_PIN, LOW); // Turn OFF Pump
+}
